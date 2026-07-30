@@ -8,7 +8,7 @@
 
 WebServerManager::WebServerManager(Settings &settings, NetworkManager &network,
                                    MqttManager &mqtt, ClimateController &climate,
-                                   PowerManager &power, PortaSplitIrController &ir)
+                                   PowerManager &power, MideaIrController &ir)
     : _settings(settings), _network(network), _mqtt(mqtt), _climate(climate),
       _power(power), _ir(ir), _server(Config::kWebPort) {}
 
@@ -48,28 +48,38 @@ void WebServerManager::begin() {
   _server.on("/ncsi.txt", HTTP_GET, captive);
   _server.on("/connecttest.txt", HTTP_GET, captive);
   _server.on("/fwlink", HTTP_GET, captive);
+  _server.on("/api/activity", HTTP_GET, [&]() {
+    _power.noteBrowserActivity();
+    _server.send(204, "text/plain", "");
+  });
   _server.on("/api/status", HTTP_GET, [&]() { handleStatus(); });
   _server.on("/api/settings", HTTP_GET, [&]() { handleSettingsJson(); });
   _server.on("/api/resend", HTTP_POST, [&]() {
-    _server.send(_climate.requestResend() ? 202 : 429, "text/plain",
-                 "IR transmission queued; reception cannot be confirmed.");
+    const bool accepted = _climate.requestResend();
+    _server.send(accepted ? 202 : 429, "text/plain",
+                 accepted ? "Current settings sent again."
+                          : "Please wait a moment before sending again.");
   });
   _server.on("/api/power-toggle", HTTP_POST, [&]() {
     const char *value = _climate.state().power ? "OFF" : "ON";
-    _server.send(_climate.handleSetting("power", value) ? 202 : 400, "text/plain",
-                 "Power toggle queued; reception cannot be confirmed.");
+    const bool accepted = _climate.handleSetting("power", value);
+    _server.send(accepted ? 202 : 400, "text/plain",
+                 accepted ? "Power command sent." : "Could not send the power command.");
   });
   _server.on("/api/climate", HTTP_POST, [&]() {
     const bool modeOk = _climate.handleSetting("mode", _server.arg("mode").c_str());
     const bool tempOk = _climate.handleSetting(
         "target_temperature", _server.arg("target").c_str());
     _server.send(modeOk && tempOk ? 202 : 400, "text/plain",
-                 modeOk && tempOk ? "Test climate state queued." : "Invalid mode or target.");
+                 modeOk && tempOk ? "Mode and temperature applied."
+                                  : "Please check the mode and temperature.");
   });
   _server.on("/api/follow", HTTP_POST, [&]() {
     const float value = _server.arg("temperature").toFloat();
-    _server.send(_climate.requestFollowMeTest(value) ? 202 : 400, "text/plain",
-                 "Follow-Me transmission queued; PortaSplit compatibility is unverified.");
+    const bool accepted = _climate.requestFollowMeTest(value);
+    _server.send(accepted ? 202 : 400, "text/plain",
+                 accepted ? "Room temperature sent."
+                          : "Please enter a room temperature between 0 and 37 °C.");
   });
   _server.on("/settings", HTTP_GET, [&]() {
     sendWebAsset(WebAssets::kSettingsMenu, WebAssets::kSettingsMenuLength, "text/html");
@@ -114,12 +124,14 @@ void WebServerManager::loop() {
 
 void WebServerManager::sendWebAsset(const uint8_t *data, size_t length,
                                     const char *contentType) {
+  _power.noteBrowserActivity();
   _server.sendHeader(F("Content-Encoding"), F("gzip"));
   _server.sendHeader(F("Cache-Control"), F("no-cache"));
   _server.send_P(200, contentType, reinterpret_cast<PGM_P>(data), length);
 }
 
 void WebServerManager::handleNetworks() {
+  _power.noteBrowserActivity();
   if (_server.hasArg("refresh")) _network.requestScan(true);
   const int count = WiFi.scanComplete();
   if (count == WIFI_SCAN_RUNNING || count == WIFI_SCAN_FAILED) {
@@ -182,10 +194,11 @@ void WebServerManager::handleStandalone() {
 }
 
 void WebServerManager::handleStatus() {
+  _power.noteBrowserActivity();
   JsonDocument doc;
   const SettingsData &s = _settings.data();
   doc["device"] = s.deviceName;
-  doc["firmware"] = PORTASPLIT_VERSION;
+  doc["firmware"] = MIDEAFOLLOWME_VERSION;
   doc["uptime_s"] = millis() / 1000UL;
   doc["free_heap"] = ESP.getFreeHeap();
   doc["wifi_rssi_dbm"] = WiFi.isConnected() ? WiFi.RSSI() : 0;
@@ -200,11 +213,19 @@ void WebServerManager::handleStatus() {
       ? _climate.state().roomTemperature : static_cast<float>(NAN);
   doc["temperature_age_s"] = _climate.state().roomTemperatureValid
       ? _climate.roomTemperatureAgeMs() / 1000UL : 0;
+  doc["temperature_source"] = _climate.temperatureSourceName();
+  doc["local_sensor_detected"] = _climate.localSensorDetected();
+  if (_climate.localTemperatureValid())
+    doc["local_temperature"] = _climate.localTemperature();
+  else
+    doc["local_temperature"] = nullptr;
   doc["isense"] = _climate.state().iSense;
   doc["power_mode"] = static_cast<uint8_t>(s.powerMode);
   doc["wake_reason"] = _power.wakeReason();
   doc["wake_count"] = _power.wakeCount();
   doc["awake_ms"] = _power.awakeMs();
+  doc["energy_saving_delay_s"] =
+      (_power.energySavingDelayRemainingMs() + 999UL) / 1000UL;
   doc["deep_sleep_interval_s"] = s.deepSleepIntervalSec;
   if (isfinite(_power.batteryVoltage())) doc["battery_voltage"] = _power.batteryVoltage();
   JsonObject climate = doc["climate"].to<JsonObject>();
@@ -217,7 +238,7 @@ void WebServerManager::handleStatus() {
 void WebServerManager::handleSettingsJson() {
   const SettingsData &s = _settings.data();
   JsonDocument doc;
-  doc["firmware"] = PORTASPLIT_VERSION;
+  doc["firmware"] = MIDEAFOLLOWME_VERSION;
   doc["mqttHost"] = s.mqttHost;
   doc["mqttPort"] = s.mqttPort;
   doc["mqttUser"] = s.mqttUser;
@@ -230,6 +251,7 @@ void WebServerManager::handleSettingsJson() {
   doc["followInterval"] = s.followMeIntervalSec;
   doc["tempTimeout"] = s.temperatureTimeoutSec;
   doc["tempCorrection"] = s.temperatureCorrection;
+  doc["localSensorFallback"] = s.localSensorFallback ? 1 : 0;
   doc["debug"] = s.debug ? 1 : 0;
   doc["powerMode"] = static_cast<uint8_t>(s.powerMode);
   doc["sleepInterval"] = s.deepSleepIntervalSec;
@@ -265,6 +287,7 @@ void WebServerManager::handleSave() {
   s.followMeIntervalSec = _server.arg("followInterval").toInt();
   s.temperatureTimeoutSec = _server.arg("tempTimeout").toInt();
   s.temperatureCorrection = _server.arg("tempCorrection").toFloat();
+  s.localSensorFallback = _server.arg("localSensorFallback") == "1";
   const int mode = _server.arg("powerMode").toInt();
   if (mode >= 0 && mode <= 2) s.powerMode = static_cast<PowerMode>(mode);
   s.deepSleepIntervalSec = _server.arg("sleepInterval").toInt();

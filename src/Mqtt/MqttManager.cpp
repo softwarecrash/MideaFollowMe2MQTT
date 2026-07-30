@@ -8,7 +8,7 @@
 MqttManager *MqttManager::_instance = nullptr;
 
 MqttManager::MqttManager(SettingsData &settings, ClimateController &climate,
-                         PowerManager &power, PortaSplitIrController &ir)
+                         PowerManager &power, MideaIrController &ir)
     : _settings(settings), _climate(climate), _power(power), _ir(ir), _mqtt(_network) {}
 
 void MqttManager::begin() {
@@ -147,11 +147,11 @@ void MqttManager::publishState(bool force) {
   root["assumed_state"] = true;
   root["last_ir_send_ms"] = _ir.lastSendMs();
   root["last_follow_me_send_ms"] = _ir.lastFollowMeMs();
-  char json[768];
+  char json[1024];
   serializeJson(doc, json, sizeof(json));
   publish("state", json, _settings.mqttRetain);
   char value[32];
-  const PortaSplitState &s = _climate.state();
+  const MideaState &s = _climate.state();
   publish("state/power", s.power ? "ON" : "OFF", _settings.mqttRetain);
   publish("state/mode", ClimateValues::toString(s.mode), _settings.mqttRetain);
   snprintf(value, sizeof(value), "%u", s.targetTemperature);
@@ -161,6 +161,12 @@ void MqttManager::publishState(bool force) {
     publish("state/room_temperature", value, _settings.mqttRetain);
   }
   publish("state/room_temperature_valid", s.roomTemperatureValid ? "true" : "false", _settings.mqttRetain);
+  publish("state/temperature_source", _climate.temperatureSourceName(), _settings.mqttRetain);
+  publish("state/local_sensor_detected", _climate.localSensorDetected() ? "true" : "false", _settings.mqttRetain);
+  if (_climate.localTemperatureValid()) {
+    snprintf(value, sizeof(value), "%.1f", _climate.localTemperature());
+    publish("state/local_temperature", value, _settings.mqttRetain);
+  } else publish("state/local_temperature", "", _settings.mqttRetain);
   publish("state/fan", ClimateValues::toString(s.fanMode), _settings.mqttRetain);
   publish("state/swing", ClimateValues::toString(s.swingMode), _settings.mqttRetain);
   publish("state/isense", s.iSense ? "ON" : "OFF", _settings.mqttRetain);
@@ -176,7 +182,7 @@ void MqttManager::publishDiagnostics() {
   if (!_mqtt.connected()) return;
   _lastStatusMs = millis();
   JsonDocument doc;
-  doc["firmware"] = PORTASPLIT_VERSION;
+  doc["firmware"] = MIDEAFOLLOWME_VERSION;
   doc["build_date"] = __DATE__ " " __TIME__;
   char chip[12];
   snprintf(chip, sizeof(chip), "%06X", ESP.getChipId());
@@ -216,7 +222,7 @@ void MqttManager::publishDiscovery() {
   JsonDocument doc;
   const String prefix = String("homeassistant/climate/") + _settings.deviceName + "/config";
   doc["name"] = _settings.deviceName;
-  doc["unique_id"] = String("portasplit_") + String(ESP.getChipId(), HEX);
+  doc["unique_id"] = String("mideafollowme_") + String(ESP.getChipId(), HEX);
   doc["availability_topic"] = MqttTopics::topic(_settings.mqttBaseTopic, "availability");
   doc["payload_available"] = "online";
   doc["payload_not_available"] = "offline";
@@ -247,8 +253,8 @@ void MqttManager::publishDiscovery() {
   JsonObject device = doc["device"].to<JsonObject>();
   device["name"] = _settings.deviceName;
   device["manufacturer"] = "softwarecrash";
-  device["model"] = "PortaSplit2MQTT (assumed-state IR bridge)";
-  device["sw_version"] = PORTASPLIT_VERSION;
+  device["model"] = "MideaFollowMe2MQTT (assumed-state IR bridge)";
+  device["sw_version"] = MIDEAFOLLOWME_VERSION;
   char payload[1400];
   serializeJson(doc, payload, sizeof(payload));
   _mqtt.publish(prefix.c_str(), payload, true);

@@ -1,10 +1,10 @@
-#include "Climate/PortaSplitState.h"
+#include "Climate/MideaState.h"
 
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
 
-bool PortaSplitState::operator==(const PortaSplitState &o) const {
+bool MideaState::operator==(const MideaState &o) const {
   return power == o.power && targetTemperature == o.targetTemperature &&
          mode == o.mode && fanMode == o.fanMode && swingMode == o.swingMode &&
          turbo == o.turbo && sleep == o.sleep && silent == o.silent &&
@@ -94,7 +94,7 @@ bool buildTopic(char *target, size_t size, const char *base, const char *suffix)
   const int written = snprintf(target, size, "%s/%s", base, suffix);
   return written > 0 && static_cast<size_t>(written) < size;
 }
-bool validate(PortaSplitState &state) {
+bool validate(MideaState &state) {
   if (state.targetTemperature < 17) state.targetTemperature = 17;
   if (state.targetTemperature > 30) state.targetTemperature = 30;
   return true;

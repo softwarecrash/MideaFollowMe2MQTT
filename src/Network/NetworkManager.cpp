@@ -1,6 +1,6 @@
 #include "Network/NetworkManager.h"
 
-#include "Climate/PortaSplitState.h"
+#include "Climate/MideaState.h"
 #include "config.h"
 
 void NetworkManager::begin(bool forcePortal) {
@@ -15,10 +15,7 @@ void NetworkManager::begin(bool forcePortal) {
     return;
   }
   WiFi.mode(WIFI_STA);
-  if (_settings.powerMode == PowerMode::ModemSleep)
-    WiFi.setSleepMode(WIFI_MODEM_SLEEP);
-  else
-    WiFi.setSleepMode(WIFI_NONE_SLEEP);
+  WiFi.setSleepMode(WIFI_NONE_SLEEP);
   if (forcePortal || !_settings.wifiSsid[0]) startPortal();
   else connect(_settings.fastConnect && _settings.wifiBssidValid);
 }
@@ -39,7 +36,7 @@ void NetworkManager::connect(bool fast) {
 }
 
 void NetworkManager::startPortal() {
-  if (_portalActive) return;
+  if (_portalActive || _portalExpired) return;
   _portalActive = true;
   _portalStartedMs = millis();
   WiFi.mode(WIFI_AP_STA);
@@ -61,7 +58,7 @@ void NetworkManager::stopPortal() {
   WiFi.softAPdisconnect(true);
   WiFi.mode(WIFI_STA);
   _portalActive = false;
-  Serial.println(F("[WIFI] Saved network available; setup AP stopped"));
+  Serial.println(F("[WIFI] Setup AP stopped"));
 }
 
 void NetworkManager::requestScan(bool force) {
@@ -79,12 +76,12 @@ void NetworkManager::requestScan(bool force) {
   }
 }
 
-void NetworkManager::loop() {
+void NetworkManager::loop(bool allowEnergySaving) {
   processDns();
   const uint32_t now = millis();
   if (_settings.standaloneMode) {
     if (_portalActive && _standalonePortalTimed &&
-        ClimateValues::elapsed(now, _portalStartedMs, Config::kStandalonePortalMs)) {
+        allowEnergySaving) {
       Serial.println(F("[WIFI] Standalone setup window ended; radio disabled"));
       _dns.stop();
       WiFi.softAPdisconnect(true);
@@ -93,6 +90,22 @@ void NetworkManager::loop() {
     }
     return;
   }
+  if (_portalActive && allowEnergySaving && _settings.wifiSsid[0]) {
+    _portalExpired = true;
+    stopPortal();
+  }
+
+  const bool wantModemSleep =
+      _settings.powerMode == PowerMode::ModemSleep && allowEnergySaving &&
+      !_portalActive;
+  if (wantModemSleep != _modemSleepActive) {
+    WiFi.setSleepMode(wantModemSleep ? WIFI_MODEM_SLEEP : WIFI_NONE_SLEEP);
+    _modemSleepActive = wantModemSleep;
+    Serial.println(wantModemSleep
+        ? F("[POWER] Wi-Fi modem sleep enabled after inactivity window")
+        : F("[POWER] Wi-Fi modem sleep paused by browser activity"));
+  }
+
   if (connected()) {
     if (!_connectedMs) {
       _connectedMs = now;
@@ -111,12 +124,14 @@ void NetworkManager::loop() {
     connect(false);
     return;
   }
-  if (_settings.powerMode != PowerMode::DeepSleep && !_portalActive &&
+  if ((_settings.powerMode != PowerMode::DeepSleep || !allowEnergySaving) &&
+      !_portalActive &&
       ClimateValues::elapsed(now, _attemptStartedMs, _settings.wifiTimeoutSec * 1000UL)) {
     startPortal();
     return;
   }
-  if (_settings.powerMode != PowerMode::DeepSleep && _portalActive &&
+  if ((_settings.powerMode != PowerMode::DeepSleep || !allowEnergySaving) &&
+      _portalActive &&
       _settings.wifiSsid[0]) {
     const int scanCount = WiFi.scanComplete();
     if (scanCount >= 0 && !_scanHandled) {

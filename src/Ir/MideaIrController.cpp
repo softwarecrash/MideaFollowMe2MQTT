@@ -1,10 +1,10 @@
-#include "Ir/PortaSplitIrController.h"
+#include "Ir/MideaIrController.h"
 
 #include "config.h"
 
-PortaSplitIrController::~PortaSplitIrController() { delete _midea; }
+MideaIrController::~MideaIrController() { delete _midea; }
 
-void PortaSplitIrController::begin(const SettingsData &settings) {
+void MideaIrController::begin(const SettingsData &settings) {
   _settings = &settings;
   delete _midea;
   _midea = new IRMideaAC(settings.irPin, settings.irInverted);
@@ -14,13 +14,13 @@ void PortaSplitIrController::begin(const SettingsData &settings) {
                 settings.irPin, settings.irInverted ? "true" : "false");
 }
 
-bool PortaSplitIrController::canSend(uint32_t now) const {
+bool MideaIrController::canSend(uint32_t now) const {
   const uint32_t gap = Config::kMinIrGapMs > _settings->irRepeatPauseMs
       ? Config::kMinIrGapMs : _settings->irRepeatPauseMs;
   return _midea && static_cast<uint32_t>(now - _lastSendMs) >= gap;
 }
 
-void PortaSplitIrController::applyClimate(const PortaSplitState &state) {
+void MideaIrController::applyClimate(const MideaState &state) {
   _midea->setEnableSensorTemp(false);
   _midea->setPower(state.power);
   _midea->setUseCelsius(true);
@@ -41,7 +41,7 @@ void PortaSplitIrController::applyClimate(const PortaSplitState &state) {
   _midea->setSleep(state.sleep);
 }
 
-void PortaSplitIrController::logState(const char *type, const PortaSplitState &state,
+void MideaIrController::logState(const char *type, const MideaState &state,
                                       float sensorTemperature) {
   if (!_settings->debug) return;
   Serial.printf("[IR] type=%s protocol=MIDEA gpio=%u repeats=%u raw=0x%012llX "
@@ -52,7 +52,7 @@ void PortaSplitIrController::logState(const char *type, const PortaSplitState &s
                 ClimateValues::toString(state.fanMode), sensorTemperature);
 }
 
-bool PortaSplitIrController::sendClimate(const PortaSplitState &state) {
+bool MideaIrController::sendClimate(const MideaState &state) {
   if (!canSend(millis())) return false;
   applyClimate(state);
   // These are one-shot/toggle commands in the library and remain unverified on PortaSplit.
@@ -78,7 +78,7 @@ bool PortaSplitIrController::sendClimate(const PortaSplitState &state) {
   return true;
 }
 
-bool PortaSplitIrController::sendFollowMe(const PortaSplitState &state, float temperature) {
+bool MideaIrController::sendFollowMe(const MideaState &state, float temperature) {
   if (!canSend(millis())) return false;
   const uint8_t sensor = ClimateValues::roundSensorTemperature(
       ClimateValues::clampTemperature(temperature, 0.0F, 37.0F));

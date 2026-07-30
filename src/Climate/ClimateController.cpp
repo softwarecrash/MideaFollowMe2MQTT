@@ -3,7 +3,7 @@
 #include <stdlib.h>
 
 ClimateController::ClimateController(const SettingsData &settings,
-                                     PortaSplitIrController &ir)
+                                     MideaIrController &ir)
     : _settings(settings), _ir(ir) {}
 
 void ClimateController::begin() {
@@ -24,19 +24,86 @@ bool ClimateController::setRoomTemperature(const char *payload) {
   char *end = nullptr;
   const float parsed = strtof(payload, &end);
   if (end == payload || *end != '\0' || !isfinite(parsed)) return false;
-  const float unbounded = parsed + _settings.temperatureCorrection;
-  if (unbounded < _settings.temperatureMin || unbounded > _settings.temperatureMax) return false;
-  const float corrected = ClimateValues::correctedTemperature(
-      parsed, _settings.temperatureCorrection, _settings.temperatureMin,
-      _settings.temperatureMax);
-  const bool immediate = !_state.roomTemperatureValid ||
-      fabsf(corrected - _state.roomTemperature) >= _settings.immediateChange;
-  _state.roomTemperature = corrected;
-  _state.roomTemperatureValid = true;
-  _temperatureReceivedMs = millis();
-  if (_state.iSense && immediate) _followMePending = true;
-  changed(false);
+  return setMqttTemperature(parsed);
+}
+
+bool ClimateController::setMqttTemperature(float temperature) {
+  const float corrected = temperature + _settings.temperatureCorrection;
+  if (!isfinite(temperature) || corrected < _settings.temperatureMin ||
+      corrected > _settings.temperatureMax)
+    return false;
+  _mqttTemperature = corrected;
+  _mqttTemperatureValid = true;
+  _mqttTemperatureReceivedMs = millis();
+  selectTemperature();
   return true;
+}
+
+void ClimateController::updateLocalTemperature(bool detected, bool valid,
+                                               float temperature) {
+  const bool correctedValid = detected && valid && isfinite(temperature) &&
+      temperature + _settings.temperatureCorrection >= _settings.temperatureMin &&
+      temperature + _settings.temperatureCorrection <= _settings.temperatureMax;
+  const bool metadataChanged = detected != _localSensorDetected ||
+      correctedValid != _localTemperatureValid;
+  _localSensorDetected = detected;
+  _localTemperatureValid = correctedValid;
+  if (correctedValid) {
+    _localTemperature = temperature + _settings.temperatureCorrection;
+    _localTemperatureReceivedMs = millis();
+  } else {
+    _localTemperature = NAN;
+    _localTemperatureReceivedMs = 0;
+  }
+  const uint32_t before = _revision;
+  selectTemperature();
+  if (metadataChanged && _revision == before) changed(false);
+}
+
+void ClimateController::selectTemperature() {
+  TemperatureSource selected = TemperatureSource::None;
+  float selectedTemperature = NAN;
+  uint32_t selectedReceivedMs = 0;
+  if (!_settings.standaloneMode && _mqttTemperatureValid) {
+    selected = TemperatureSource::Mqtt;
+    selectedTemperature = _mqttTemperature;
+    selectedReceivedMs = _mqttTemperatureReceivedMs;
+  } else if (_localTemperatureValid &&
+             (_settings.standaloneMode || _settings.localSensorFallback)) {
+    selected = TemperatureSource::Local;
+    selectedTemperature = _localTemperature;
+    selectedReceivedMs = _localTemperatureReceivedMs;
+  }
+
+  if (selected == TemperatureSource::None) {
+    if (_state.roomTemperatureValid ||
+        _temperatureSource != TemperatureSource::None) {
+      _state.roomTemperatureValid = false;
+      _temperatureSource = TemperatureSource::None;
+      _temperatureReceivedMs = 0;
+      _followMePending = false;
+      changed(false);
+      Serial.println(F("[ISENSE] No valid temperature source; transmission stopped"));
+    }
+    return;
+  }
+
+  const bool sourceChanged = selected != _temperatureSource;
+  const bool immediate = !_state.roomTemperatureValid || sourceChanged ||
+      fabsf(selectedTemperature - _state.roomTemperature) >=
+          _settings.immediateChange;
+  const bool valueChanged = !_state.roomTemperatureValid ||
+      selectedTemperature != _state.roomTemperature;
+  _state.roomTemperature = selectedTemperature;
+  _state.roomTemperatureValid = true;
+  _temperatureSource = selected;
+  _temperatureReceivedMs = selectedReceivedMs;
+  if (_state.iSense && immediate) _followMePending = true;
+  if (sourceChanged || valueChanged) {
+    changed(false);
+    Serial.printf("[ISENSE] Temperature source: %s (%.2f C)\n",
+                  temperatureSourceName(), selectedTemperature);
+  }
 }
 
 bool ClimateController::handleSetting(const char *key, const char *payload) {
@@ -95,13 +162,7 @@ bool ClimateController::requestResend() {
 }
 
 bool ClimateController::requestFollowMeTest(float temperature) {
-  if (temperature < 0 || temperature > 37) return false;
-  _state.roomTemperature = temperature;
-  _state.roomTemperatureValid = true;
-  _temperatureReceivedMs = millis();
-  _followMePending = true;
-  changed(false);
-  return true;
+  return setMqttTemperature(temperature);
 }
 
 void ClimateController::prepareWakeWork(bool climateStateChanged) {
@@ -111,14 +172,17 @@ void ClimateController::prepareWakeWork(bool climateStateChanged) {
 }
 
 void ClimateController::updateTemperatureValidity() {
-  if (_state.roomTemperatureValid &&
-      ClimateValues::elapsed(millis(), _temperatureReceivedMs,
+  if (_mqttTemperatureValid &&
+      ClimateValues::elapsed(millis(), _mqttTemperatureReceivedMs,
                              _settings.temperatureTimeoutSec * 1000UL)) {
-    _state.roomTemperatureValid = false;
-    _followMePending = false;
-    if (_settings.staleAction == StaleTemperatureAction::DisableISense) _state.iSense = false;
-    changed(false);
-    Serial.println(F("[ISENSE] External temperature is stale; transmission stopped"));
+    _mqttTemperatureValid = false;
+    Serial.println(F("[ISENSE] MQTT temperature is stale"));
+    selectTemperature();
+    if (_temperatureSource == TemperatureSource::None &&
+        _settings.staleAction == StaleTemperatureAction::DisableISense) {
+      _state.iSense = false;
+      changed(false);
+    }
   }
 }
 
@@ -150,6 +214,14 @@ uint32_t ClimateController::roomTemperatureAgeMs() const {
   return _state.roomTemperatureValid ? millis() - _temperatureReceivedMs : UINT32_MAX;
 }
 
+const char *ClimateController::temperatureSourceName() const {
+  switch (_temperatureSource) {
+    case TemperatureSource::Mqtt: return "mqtt";
+    case TemperatureSource::Local: return "local_ds18b20";
+    default: return "none";
+  }
+}
+
 void ClimateController::toJson(JsonObject o) const {
   o["power"] = _state.power;
   o["mode"] = ClimateValues::toString(_state.mode);
@@ -157,6 +229,12 @@ void ClimateController::toJson(JsonObject o) const {
   if (_state.roomTemperatureValid) o["room_temperature"] = _state.roomTemperature;
   else o["room_temperature"] = nullptr;
   o["room_temperature_valid"] = _state.roomTemperatureValid;
+  o["temperature_source"] = temperatureSourceName();
+  o["mqtt_temperature_valid"] = _mqttTemperatureValid;
+  o["local_sensor_detected"] = _localSensorDetected;
+  o["local_temperature_valid"] = _localTemperatureValid;
+  if (_localTemperatureValid) o["local_temperature"] = _localTemperature;
+  else o["local_temperature"] = nullptr;
   o["fan"] = ClimateValues::toString(_state.fanMode);
   o["swing"] = ClimateValues::toString(_state.swingMode);
   o["turbo"] = _state.turbo;

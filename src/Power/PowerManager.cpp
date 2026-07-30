@@ -1,9 +1,10 @@
 #include "Power/PowerManager.h"
 
-#include "Climate/PortaSplitState.h"
+#include "Climate/MideaState.h"
 
 void PowerManager::begin(bool forceMaintenance) {
   _bootMs = millis();
+  _energySavingReferenceMs = _bootMs;
   _rtcValid = RtcStorage::load(_rtc);
   ++_rtc.wakeCount;
   if (_rtcValid && _rtc.wifiBssidValid) {
@@ -13,6 +14,8 @@ void PowerManager::begin(bool forceMaintenance) {
   }
   _wakeReason = ESP.getResetReason().indexOf(F("Deep-Sleep")) >= 0
       ? "deep_sleep" : "power_on";
+  if (!strcmp(_wakeReason, "deep_sleep"))
+    _energySavingReferenceMs = _bootMs - Config::kEnergySavingGraceMs;
   _maintenance = forceMaintenance || _settings.forceConfigNextBoot;
   _settings.forceConfigNextBoot = false;
   readBattery();
@@ -21,6 +24,21 @@ void PowerManager::begin(bool forceMaintenance) {
                 static_cast<unsigned>(_settings.powerMode), _wakeReason,
                 static_cast<unsigned long>(_rtc.wakeCount),
                 _rtcValid ? "valid" : "invalid", _batteryVoltage);
+}
+
+bool PowerManager::energySavingAllowed() const {
+  return ClimateValues::elapsed(millis(), _energySavingReferenceMs,
+                                Config::kEnergySavingGraceMs);
+}
+
+uint32_t PowerManager::energySavingDelayRemainingMs() const {
+  const uint32_t age = millis() - _energySavingReferenceMs;
+  return age >= Config::kEnergySavingGraceMs
+      ? 0 : Config::kEnergySavingGraceMs - age;
+}
+
+void PowerManager::noteBrowserActivity() {
+  _energySavingReferenceMs = millis();
 }
 
 void PowerManager::readBattery() {
@@ -82,7 +100,7 @@ bool PowerManager::acceptCommandId(uint32_t id) {
   return true;
 }
 
-bool PowerManager::climateChanged(const PortaSplitState &state) const {
+bool PowerManager::climateChanged(const MideaState &state) const {
   if (!_rtcValid || state != _rtc.lastClimateState) return true;
   if (_settings.safetyResendSec) {
     uint32_t wakes =
@@ -94,7 +112,7 @@ bool PowerManager::climateChanged(const PortaSplitState &state) const {
   return false;
 }
 
-void PowerManager::rememberClimate(const PortaSplitState &state, float roomTemperature,
+void PowerManager::rememberClimate(const MideaState &state, float roomTemperature,
                                    LastSendReason reason) {
   _rtc.lastClimateState = state;
   _rtc.lastRoomTemperature = roomTemperature;

@@ -1,6 +1,6 @@
 {
-  "deviceName": "PortaSplit-Living",
-  "mqttBaseTopic": "portasplit/living",
+  "deviceName": "MideaFollowMe-Living",
+  "mqttBaseTopic": "mideafollowme/living",
   "irPin": 4,
   "irInverted": false,
   "irRepeats": 0,
@@ -10,6 +10,7 @@
   "temperatureMin": 0,
   "temperatureMax": 37,
   "temperatureCorrection": 0.0,
+  "localSensorFallback": true,
   "immediateChange": 0.5,
   "followMeBeep": false,
   "powerMode": "AlwaysOn",

@@ -7,7 +7,7 @@ enum class ClimateMode : uint8_t { Auto, Cool, Heat, Dry, FanOnly };
 enum class FanMode : uint8_t { Auto, Low, Medium, High };
 enum class SwingMode : uint8_t { Off, Vertical };
 
-struct PortaSplitState {
+struct MideaState {
   bool power = false;
   uint8_t targetTemperature = 22;
   float roomTemperature = 0.0F;
@@ -21,8 +21,8 @@ struct PortaSplitState {
   bool display = true;
   bool iSense = false;
 
-  bool operator==(const PortaSplitState &other) const;
-  bool operator!=(const PortaSplitState &other) const { return !(*this == other); }
+  bool operator==(const MideaState &other) const;
+  bool operator!=(const MideaState &other) const { return !(*this == other); }
 };
 
 namespace ClimateValues {
@@ -38,5 +38,5 @@ float correctedTemperature(float value, float correction, float minimum, float m
 uint8_t roundSensorTemperature(float value);
 bool elapsed(uint32_t now, uint32_t since, uint32_t interval);
 bool buildTopic(char *target, size_t size, const char *base, const char *suffix);
-bool validate(PortaSplitState &state);
+bool validate(MideaState &state);
 }  // namespace ClimateValues

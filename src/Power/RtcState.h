@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#include "Climate/PortaSplitState.h"
+#include "Climate/MideaState.h"
 
 enum class LastSendReason : uint8_t { None, Changed, Forced, RtcInvalid, SafetyResend, FollowMe };
 
@@ -17,7 +17,7 @@ struct RtcState {
   uint8_t wifiChannel;
   uint8_t wifiBssid[6];
   bool wifiBssidValid;
-  PortaSplitState lastClimateState;
+  MideaState lastClimateState;
   float lastRoomTemperature;
   LastSendReason lastSendReason;
   uint32_t crc;

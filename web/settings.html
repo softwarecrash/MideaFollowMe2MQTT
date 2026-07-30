@@ -39,7 +39,7 @@
       <div class="panel">
         <div class="panel-title">Infrared & Follow Me</div>
         <div class="grid">
-          <label>IR GPIO<input name="irPin" type="number" min="0" max="15"></label>
+          <label>IR GPIO<input name="irPin" type="number" min="1" max="15"></label>
           <label>IR repeats<input name="irRepeats" type="number" min="0" max="10"></label>
         </div>
         <label>IR inverted
@@ -48,14 +48,25 @@
             <option value="1">Yes</option>
           </select>
         </label>
-        <label>Command coalesce (ms)<input name="coalesce" type="number"></label>
+        <label>Delay before sending changes (ms)<input name="coalesce" type="number"></label>
         <div class="grid">
-          <label>Follow-Me interval (s)<input name="followInterval" type="number"></label>
-          <label>Temperature timeout (s)<input name="tempTimeout" type="number"></label>
+          <label>Room temperature update interval (s)<input name="followInterval" type="number"></label>
+          <label>Room temperature expires after (s)<input name="tempTimeout" type="number"></label>
         </div>
         <label>Temperature correction °C
           <input name="tempCorrection" type="number" step=".1">
         </label>
+        <label>Local DS18B20 fallback
+          <select name="localSensorFallback">
+            <option value="1">Use when MQTT temperature is unavailable</option>
+            <option value="0">MQTT temperature only</option>
+          </select>
+        </label>
+        <p class="note">
+          Standalone mode always uses a detected DS18B20. In network mode the
+          MQTT temperature has priority; the local sensor takes over only after
+          the MQTT temperature expires.
+        </p>
         <label>Debug logging
           <select name="debug">
             <option value="0">Disabled</option>
@@ -68,14 +79,16 @@
         <div class="panel-title">Energy</div>
         <label>Power mode
           <select name="powerMode">
-            <option value="0">AlwaysOn</option>
-            <option value="1">ModemSleep</option>
-            <option value="2">DeepSleep</option>
+            <option value="0">Always on</option>
+            <option value="1">Wi-Fi power saving</option>
+            <option value="2">Deep sleep</option>
           </select>
         </label>
         <div class="warning">
-          During Deep Sleep the device is offline. Retained MQTT set topics and
-          GPIO16-to-RST are required.
+          Wi-Fi power saving and Deep Sleep remain disabled for at least 10 minutes
+          after a manual restart. Keeping a browser page open pauses this countdown.
+          During Deep Sleep the device is offline; retained MQTT set topics and a
+          GPIO16-to-RST wake connection are required.
         </div>
         <div class="grid">
           <label>Sleep interval (s)<input name="sleepInterval" type="number"></label>
@@ -84,7 +97,7 @@
       </div>
 
       <div class="panel stack">
-        <button type="submit">Validate, save and restart</button>
+        <button type="submit">Save changes and restart</button>
         <a class="btn btn-outline" href="/settings">Back to settings</a>
       </div>
     </form>
@@ -105,6 +118,7 @@
         document.getElementById("settings-form").innerHTML =
           '<div class="panel warning">Could not load settings.</div>';
       });
+    setInterval(() => fetch("/api/activity", {cache: "no-store"}).catch(() => {}), 5000);
   </script>
 </body>
 </html>

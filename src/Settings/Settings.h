@@ -57,6 +57,7 @@ struct SettingsData {
   float batteryEmptyV;
   float batteryFullV;
   bool haDiscovery;
+  bool localSensorFallback;
   uint32_t crc;
 };
 

@@ -36,6 +36,7 @@
       .then(response => response.json())
       .then(data => firmware.textContent = data.firmware)
       .catch(() => {});
+    setInterval(() => fetch("/api/activity", {cache: "no-store"}).catch(() => {}), 5000);
   </script>
 </body>
 </html>

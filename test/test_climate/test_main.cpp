@@ -1,6 +1,6 @@
 #include <unity.h>
 
-#include "Climate/PortaSplitState.h"
+#include "Climate/MideaState.h"
 
 void test_payload_parsing() {
   bool value = false;
@@ -41,14 +41,14 @@ void test_timeout_wraparound() {
 void test_topic_generation() {
   char topic[64];
   TEST_ASSERT_TRUE(ClimateValues::buildTopic(
-      topic, sizeof(topic), "portasplit/living", "set/power"));
-  TEST_ASSERT_EQUAL_STRING("portasplit/living/set/power", topic);
+      topic, sizeof(topic), "mideafollowme/living", "set/power"));
+  TEST_ASSERT_EQUAL_STRING("mideafollowme/living/set/power", topic);
   char tooSmall[4];
   TEST_ASSERT_FALSE(ClimateValues::buildTopic(tooSmall, sizeof(tooSmall), "base", "state"));
 }
 
 void test_state_validation() {
-  PortaSplitState state;
+  MideaState state;
   state.targetTemperature = 2;
   TEST_ASSERT_TRUE(ClimateValues::validate(state));
   TEST_ASSERT_EQUAL_UINT8(17, state.targetTemperature);

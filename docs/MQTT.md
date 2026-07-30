@@ -1,7 +1,7 @@
 # MQTT topics
 
-The default base is `portasplit/portasplit`; all examples below use
-`portasplit/<device>`.
+The default base is `mideafollowme/mideafollowme`; all examples below use
+`mideafollowme/<device>`.
 
 ## Commands
 
@@ -30,18 +30,23 @@ acknowledgement is published to `command/ack`.
 - `state`: retained JSON state with `assumed_state:true`
 - `state/power`, `state/mode`, `state/target_temperature`
 - `state/room_temperature`, `state/room_temperature_valid`
+- `state/temperature_source`: `mqtt`, `local_ds18b20`, or `none`
+- `state/local_sensor_detected`, `state/local_temperature`
 - `state/fan`, `state/swing`, `state/isense`, `state/power_mode`
 - `status`: firmware, build, chip/reset, heap/uptime, wake and battery JSON
 
 Additional timestamps are present in the JSON state. Since IR is unidirectional,
 state means “last state managed/sent by the ESP,” not feedback from the AC.
 
+MQTT temperature has priority in network mode. If it expires, an enabled and
+valid local DS18B20 fallback takes over. Standalone mode always uses the local
+sensor and does not require MQTT.
+
 Example:
 
 ```sh
-mosquitto_pub -r -t portasplit/living/set/power -m ON
-mosquitto_pub -r -t portasplit/living/set/mode -m cool
-mosquitto_pub -r -t portasplit/living/set/target_temperature -m 22
-mosquitto_pub -r -t portasplit/living/set/room_temperature -m 23.4
+mosquitto_pub -r -t mideafollowme/living/set/power -m ON
+mosquitto_pub -r -t mideafollowme/living/set/mode -m cool
+mosquitto_pub -r -t mideafollowme/living/set/target_temperature -m 22
+mosquitto_pub -r -t mideafollowme/living/set/room_temperature -m 23.4
 ```
-

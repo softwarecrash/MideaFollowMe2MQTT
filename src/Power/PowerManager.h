@@ -13,8 +13,14 @@ class PowerManager {
   void begin(bool forceMaintenance);
   void loop(bool wifiConnected, bool mqttConnected, bool workPending);
   bool maintenanceMode() const { return _maintenance; }
-  bool deepSleepMode() const { return _settings.powerMode == PowerMode::DeepSleep && !_maintenance; }
-  bool shouldSleep() const { return _phase == WakePhase::Sleep; }
+  bool energySavingAllowed() const;
+  uint32_t energySavingDelayRemainingMs() const;
+  void noteBrowserActivity();
+  bool deepSleepMode() const {
+    return _settings.powerMode == PowerMode::DeepSleep && !_maintenance &&
+           energySavingAllowed();
+  }
+  bool shouldSleep() const { return deepSleepMode() && _phase == WakePhase::Sleep; }
   bool retainedWindowOpen() const { return _phase == WakePhase::ReceiveRetained; }
   WakePhase phase() const { return _phase; }
   const char *wakeReason() const { return _wakeReason; }
@@ -25,8 +31,8 @@ class PowerManager {
   uint32_t lastCommandId() const { return _rtc.lastCommandId; }
   bool acceptCommandId(uint32_t id);
   void setMaintenance(bool enabled) { _maintenance = enabled; if (enabled) _phase = WakePhase::Maintenance; }
-  bool climateChanged(const PortaSplitState &state) const;
-  void rememberClimate(const PortaSplitState &state, float roomTemperature, LastSendReason reason);
+  bool climateChanged(const MideaState &state) const;
+  void rememberClimate(const MideaState &state, float roomTemperature, LastSendReason reason);
   void enterDeepSleep();
 
  private:
@@ -36,6 +42,7 @@ class PowerManager {
   bool _maintenance = false;
   uint32_t _bootMs = 0;
   uint32_t _phaseStartedMs = 0;
+  uint32_t _energySavingReferenceMs = 0;
   WakePhase _phase = WakePhase::ConnectWifi;
   float _batteryVoltage = NAN;
   const char *_wakeReason = "power_on";

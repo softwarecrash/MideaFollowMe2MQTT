@@ -12,7 +12,7 @@ class WebServerManager {
  public:
   WebServerManager(Settings &settings, NetworkManager &network, MqttManager &mqtt,
                    ClimateController &climate, PowerManager &power,
-                   PortaSplitIrController &ir);
+                   MideaIrController &ir);
   void begin();
   void loop();
 
@@ -22,7 +22,7 @@ class WebServerManager {
   MqttManager &_mqtt;
   ClimateController &_climate;
   PowerManager &_power;
-  PortaSplitIrController &_ir;
+  MideaIrController &_ir;
   ESP8266WebServer _server;
   bool _updateFileAccepted = false;
   bool _updateHeaderChecked = false;

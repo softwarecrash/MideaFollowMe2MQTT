@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>PortaSplit2MQTT</title>
+  <title>MideaFollowMe2MQTT</title>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -14,7 +14,7 @@
               d="M10 20c12-10 32-10 44 0M16 30c9-7 23-7 32 0M23 40c5-4 13-4 18 0"/>
         <circle cx="32" cy="49" r="4" fill="currentColor"/>
       </svg>
-      <div><h1>PortaSplit2MQTT</h1><h2>IR climate bridge</h2></div>
+      <div><h1>MideaFollowMe2MQTT</h1><h2>Air conditioner controller</h2></div>
     </div>
 
     <div class="panel">
@@ -23,29 +23,37 @@
     </div>
 
     <div class="panel">
-      <div class="panel-title">IR control test</div>
+      <div class="panel-title">Air conditioner controls</div>
       <div class="warning">
-        Infrared is one-way. A transmitted command cannot confirm reception by the PortaSplit.
+        Commands are sent by infrared. The air conditioner does not report its actual
+        status back, so the displayed state may occasionally differ.
       </div>
       <div class="stack actions">
-        <button onclick="command('/api/power-toggle')">Toggle assumed power</button>
-        <button class="btn-outline" onclick="command('/api/resend')">Resend climate state</button>
+        <button onclick="command('/api/power-toggle')">Switch air conditioner on / off</button>
+        <button class="btn-outline" onclick="command('/api/resend')">Send current settings again</button>
         <div class="grid">
           <label>Mode
             <select id="mode">
-              <option>cool</option><option>heat</option><option>auto</option>
-              <option>dry</option><option value="fan_only">fan only</option>
+              <option value="cool">Cooling</option>
+              <option value="heat">Heating</option>
+              <option value="auto">Automatic</option>
+              <option value="dry">Drying</option>
+              <option value="fan_only">Fan only</option>
             </select>
           </label>
-          <label>Target °C<input id="target" type="number" min="17" max="30" value="22"></label>
+          <label>Desired temperature °C
+            <input id="target" type="number" min="17" max="30" value="22">
+          </label>
         </div>
         <button class="btn-outline"
                 onclick="command('/api/climate?mode='+mode.value+'&target='+target.value)">
-          Queue test climate
+          Apply mode and temperature
         </button>
-        <label>Follow-Me test °C<input id="temp" type="number" min="0" max="37" value="23"></label>
+        <label>Current room temperature °C
+          <input id="temp" type="number" min="0" max="37" value="23">
+        </label>
         <button class="btn-outline" onclick="command('/api/follow?temperature='+temp.value)">
-          Send Follow-Me test
+          Send room temperature now
         </button>
       </div>
     </div>
@@ -63,9 +71,11 @@
       free_heap: "Free heap", wifi_rssi_dbm: "Wi-Fi RSSI", ip: "IP address",
       mqtt_connected: "MQTT", last_ir_send_ms: "Last IR (ms)",
       last_follow_me_ms: "Last Follow-Me (ms)", room_temperature: "Room temperature",
-      temperature_age_s: "Temperature age (s)", isense: "iSense",
-      power_mode: "Power mode", wake_reason: "Wake reason", wake_count: "Wake count",
-      awake_ms: "Awake (ms)"
+      temperature_age_s: "Temperature age (s)", temperature_source: "Temperature source",
+      local_sensor_detected: "Local DS18B20", local_temperature: "Local temperature",
+      isense: "Room temperature control",
+      power_mode: "Energy mode", wake_reason: "Wake reason", wake_count: "Wake count",
+      awake_ms: "Awake (ms)", energy_saving_delay_s: "Power saving starts in (s)"
     };
 
     async function refresh() {
@@ -103,6 +113,7 @@
 
     setInterval(refresh, 3000);
     refresh();
+    setInterval(() => fetch("/api/activity", {cache: "no-store"}).catch(() => {}), 5000);
   </script>
 </body>
 </html>

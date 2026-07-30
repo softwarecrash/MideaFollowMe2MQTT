@@ -10,7 +10,7 @@ class NetworkManager {
  public:
   explicit NetworkManager(SettingsData &settings) : _settings(settings) {}
   void begin(bool forcePortal);
-  void loop();
+  void loop(bool allowEnergySaving);
   bool connected() const { return WiFi.status() == WL_CONNECTED; }
   bool portalActive() const { return _portalActive; }
   IPAddress ip() const { return connected() ? WiFi.localIP() : WiFi.softAPIP(); }
@@ -24,12 +24,14 @@ class NetworkManager {
   DNSServer _dns;
   bool _portalActive = false;
   bool _standalonePortalTimed = false;
+  bool _portalExpired = false;
   bool _scanHandled = true;
   uint32_t _portalStartedMs = 0;
   bool _fastAttempt = false;
   uint32_t _attemptStartedMs = 0;
   uint32_t _lastAttemptMs = 0;
   uint32_t _connectedMs = 0;
+  bool _modemSleepActive = false;
   void connect(bool fast);
   void startPortal();
   void stopPortal();

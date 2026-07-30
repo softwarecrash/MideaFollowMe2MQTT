@@ -14,9 +14,9 @@
               d="M10 20c12-10 32-10 44 0M16 30c9-7 23-7 32 0M23 40c5-4 13-4 18 0"/>
         <circle cx="32" cy="49" r="4" fill="currentColor"/>
       </svg>
-      <div><h1>Network Setup</h1><h2>PortaSplit2MQTT</h2></div>
+      <div><h1>Network Setup</h1><h2>MideaFollowMe2MQTT</h2></div>
     </div>
-    <p class="subtitle">Choose how this device should operate</p>
+    <p class="subtitle">Connect to your Wi-Fi or use the device without a network</p>
 
     <div class="panel">
       <div class="panel-title">
@@ -27,18 +27,19 @@
         <div class="empty"><span class="spinner">↻</span> Scanning…</div>
       </div>
       <p class="note">
-        Select a network, enter its password and connect. Credentials stay on this device.
+        Tap your network, enter its password and select Connect. The password is stored
+        only on this device.
       </p>
     </div>
 
     <div class="panel">
-      <div class="panel-title">Standalone operation</div>
+      <div class="panel-title">Use without a network</div>
       <p class="note">
-        MQTT is disabled. After every reset this setup access point remains available for
-        10 minutes, then Wi-Fi switches off to save energy. No button or maintenance pin
-        is required. PortaSplit control will later use the locally connected temperature sensor.
+        In standalone mode the device works without MQTT or home Wi-Fi. After every reset,
+        this setup network remains available for 10 minutes so you can change the configuration.
+        Wi-Fi then switches off to save energy.
       </p>
-      <button class="btn-outline" id="standalone">Use standalone mode</button>
+      <button class="btn-outline" id="standalone">Continue without home Wi-Fi</button>
     </div>
 
     <div class="panel settings-nav" id="settings-nav">
@@ -151,13 +152,13 @@
     refresh.onclick = () => scan(true);
     standalone.onclick = async () => {
       if (busy) return;
-      if (!confirm("Disable MQTT and use standalone operation? The setup AP will return for 10 minutes after every reset.")) return;
+      if (!confirm("Continue without home Wi-Fi? MQTT will be disabled. You can return to this setup page for 10 minutes after every reset.")) return;
       busy = true;
-      show("Enabling standalone mode…", true, true);
+      show("Saving standalone mode…", true, true);
       try {
         const response = await fetch("/api/standalone", {method: "POST"});
         if (!response.ok) throw new Error();
-        show("Standalone mode saved. The AP returns for 10 minutes after restart.", true, true);
+        show("Saved. This setup network will return for 10 minutes after every restart.", true, true);
       } catch {
         busy = false;
         show("Could not enable standalone mode", false);
@@ -172,6 +173,7 @@
       .then(data => firmware.textContent = data.firmware)
       .catch(() => {});
     scan();
+    setInterval(() => fetch("/api/activity", {cache: "no-store"}).catch(() => {}), 5000);
   </script>
 </body>
 </html>

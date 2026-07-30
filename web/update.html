@@ -17,14 +17,13 @@
     </div>
 
     <div class="panel">
-      <div class="panel-title">Manual OTA update</div>
+      <div class="panel-title">Install a firmware update</div>
       <p class="note">
-        Only compressed PortaSplit2MQTT OTA artifacts ending in
-        <strong>.ota.gz</strong> are accepted. Serial-flash
-        <strong>.bin</strong> files are intentionally rejected.
+        Select a MideaFollowMe2MQTT update file ending in <strong>.ota.gz</strong>.
+        Files intended for serial flashing cannot be installed here.
       </p>
       <input id="file" type="file" accept=".ota.gz,application/gzip" hidden>
-      <button id="choose">Choose firmware (.ota.gz)</button>
+      <button id="choose">Select update file</button>
       <div class="progress" id="progress">
         <div class="bar"><span id="bar"></span></div>
         <div class="progress-label"><span id="percent">0%</span><span id="size">0 / 0</span></div>
@@ -92,6 +91,7 @@
       .then(response => response.json())
       .then(data => firmware.textContent = data.firmware)
       .catch(() => {});
+    setInterval(() => fetch("/api/activity", {cache: "no-store"}).catch(() => {}), 5000);
   </script>
 </body>
 </html>

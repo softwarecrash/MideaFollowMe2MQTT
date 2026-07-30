@@ -11,7 +11,7 @@
 class MqttManager {
  public:
   MqttManager(SettingsData &settings, ClimateController &climate,
-              PowerManager &power, PortaSplitIrController &ir);
+              PowerManager &power, MideaIrController &ir);
   void begin();
   void loop(bool networkConnected);
   bool connected() { return _mqtt.connected(); }
@@ -26,7 +26,7 @@ class MqttManager {
   SettingsData &_settings;
   ClimateController &_climate;
   PowerManager &_power;
-  PortaSplitIrController &_ir;
+  MideaIrController &_ir;
   WiFiClient _network;
   PubSubClient _mqtt;
   uint32_t _lastConnectAttemptMs = 0;

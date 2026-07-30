@@ -2,15 +2,17 @@
 #include <ArduinoOTA.h>
 
 #include "Climate/ClimateController.h"
-#include "Ir/PortaSplitIrController.h"
+#include "Ir/MideaIrController.h"
 #include "Mqtt/MqttManager.h"
 #include "Network/NetworkManager.h"
 #include "Power/PowerManager.h"
+#include "Sensor/LocalTemperatureSensor.h"
 #include "Settings/Settings.h"
 #include "Web/WebServerManager.h"
 
 Settings settings;
-PortaSplitIrController irController;
+MideaIrController irController;
+LocalTemperatureSensor localTemperatureSensor;
 ClimateController climate(settings.data(), irController);
 PowerManager power(settings.data());
 NetworkManager network(settings.data());
@@ -22,6 +24,7 @@ bool otaStarted = false;
 bool sleepCommitted = false;
 WakePhase previousPhase = WakePhase::ConnectWifi;
 uint32_t observedIrSend = 0;
+uint32_t observedSensorRevision = UINT32_MAX;
 
 void startOta() {
   if (otaStarted || !network.connected() || power.deepSleepMode()) return;
@@ -38,7 +41,7 @@ void startOta() {
 void setup() {
   Serial.begin(115200);
   Serial.println();
-  Serial.printf("[BOOT] PortaSplit2MQTT %s (%s %s)\n", PORTASPLIT_VERSION, __DATE__, __TIME__);
+  Serial.printf("[BOOT] MideaFollowMe2MQTT %s (%s %s)\n", MIDEAFOLLOWME_VERSION, __DATE__, __TIME__);
 
   const bool validSettings = settings.begin();
   const bool needsSetup = !validSettings ||
@@ -48,6 +51,7 @@ void setup() {
 
   irController.begin(settings.data());
   climate.begin();
+  localTemperatureSensor.begin(Config::kLocalTemperaturePin);
   mqtt.begin();
   network.begin(power.maintenanceMode());
   web.begin();
@@ -55,7 +59,15 @@ void setup() {
 }
 
 void loop() {
-  network.loop();
+  localTemperatureSensor.loop();
+  if (localTemperatureSensor.revision() != observedSensorRevision) {
+    observedSensorRevision = localTemperatureSensor.revision();
+    climate.updateLocalTemperature(
+        localTemperatureSensor.detected(),
+        localTemperatureSensor.readingValid(),
+        localTemperatureSensor.temperature());
+  }
+  network.loop(power.energySavingAllowed());
   web.loop();
   mqtt.loop(network.connected());
   startOta();
