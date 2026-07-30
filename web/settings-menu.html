@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Settings</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <svg class="logo" viewBox="0 0 64 64" aria-hidden="true">
+        <path fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"
+              d="M32 8v8m0 32v8M8 32h8m32 0h8M15 15l6 6m22 22 6 6M49 15l-6 6M21 43l-6 6"/>
+        <circle cx="32" cy="32" r="11" fill="none" stroke="currentColor" stroke-width="4"/>
+      </svg>
+      <h1>Settings</h1>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Configuration</div>
+      <div class="stack">
+        <a class="btn" href="/settings/wifi">Network & Wi-Fi</a>
+        <a class="btn btn-outline" href="/settings/advanced">MQTT, device & power</a>
+        <a class="btn btn-outline" href="/update">Firmware update</a>
+      </div>
+    </div>
+    <div class="panel">
+      <a class="btn btn-outline" href="/">Back to dashboard</a>
+    </div>
+    <div class="footer">Firmware <span id="firmware">…</span> by SoftWareCrash</div>
+  </div>
+
+  <script>
+    fetch("/api/status", {cache: "no-store"})
+      .then(response => response.json())
+      .then(data => firmware.textContent = data.firmware)
+      .catch(() => {});
+  </script>
+</body>
+</html>

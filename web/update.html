@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Firmware update</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <svg class="logo" viewBox="0 0 64 64" aria-hidden="true">
+        <path fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"
+              d="M32 8v32m-12-12 12 12 12-12M12 50h40"/>
+      </svg>
+      <h1>Firmware Update</h1>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Manual OTA update</div>
+      <p class="note">
+        Only compressed PortaSplit2MQTT OTA artifacts ending in
+        <strong>.ota.gz</strong> are accepted. Serial-flash
+        <strong>.bin</strong> files are intentionally rejected.
+      </p>
+      <input id="file" type="file" accept=".ota.gz,application/gzip" hidden>
+      <button id="choose">Choose firmware (.ota.gz)</button>
+      <div class="progress" id="progress">
+        <div class="bar"><span id="bar"></span></div>
+        <div class="progress-label"><span id="percent">0%</span><span id="size">0 / 0</span></div>
+      </div>
+    </div>
+
+    <div class="panel"><a class="btn btn-outline" href="/">Back</a></div>
+    <div class="footer">Firmware <span id="firmware">…</span> by SoftWareCrash</div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <script>
+    function formatSize(bytes) {
+      if (bytes < 1024) return `${bytes} B`;
+      if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
+      return `${(bytes / 1048576).toFixed(1)} MB`;
+    }
+
+    function show(message, ok = true, hold = false) {
+      toast.textContent = message;
+      toast.style.borderLeftColor = ok ? "var(--primary)" : "var(--danger)";
+      toast.classList.add("show");
+      if (!hold) setTimeout(() => toast.classList.remove("show"), 3500);
+    }
+
+    choose.onclick = () => file.click();
+    file.onchange = () => {
+      const selected = file.files[0];
+      if (!selected) return;
+      if (!selected.name.toLowerCase().endsWith(".ota.gz")) {
+        show("Only .ota.gz firmware files are accepted.", false);
+        file.value = "";
+        return;
+      }
+
+      choose.style.display = "none";
+      progress.style.display = "block";
+      const request = new XMLHttpRequest();
+      request.open("POST", "/update");
+      request.upload.onprogress = event => {
+        if (!event.lengthComputable) return;
+        const value = event.loaded / event.total * 100;
+        bar.style.width = `${value}%`;
+        percent.textContent = `${Math.round(value)}%`;
+        size.textContent = `${formatSize(event.loaded)} / ${formatSize(event.total)}`;
+      };
+      request.onload = () => {
+        if (request.status === 200) {
+          bar.style.width = "100%";
+          percent.textContent = "100%";
+          show("Update complete. Device is restarting…", true, true);
+        } else {
+          choose.style.display = "block";
+          progress.style.display = "none";
+          show(request.responseText || "Update failed", false);
+        }
+      };
+      request.onerror = () => show("Upload connection failed", false);
+      const data = new FormData();
+      data.append("firmware", selected, selected.name);
+      request.send(data);
+    };
+
+    fetch("/api/status", {cache: "no-store"})
+      .then(response => response.json())
+      .then(data => firmware.textContent = data.firmware)
+      .catch(() => {});
+  </script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+.pio/
+.firmware/
+.vscode/
+.idea/
+*.bin
+*.elf
+*.map

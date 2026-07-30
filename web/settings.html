@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Device settings</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <svg class="logo" viewBox="0 0 64 64" aria-hidden="true">
+        <path fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"
+              d="M10 20c12-10 32-10 44 0M16 30c9-7 23-7 32 0M23 40c5-4 13-4 18 0"/>
+      </svg>
+      <h1>Device Settings</h1>
+    </div>
+
+    <form id="settings-form" method="post" action="/settings">
+      <div class="panel">
+        <div class="panel-title">MQTT</div>
+        <label>MQTT host<input name="mqttHost"></label>
+        <div class="grid">
+          <label>MQTT port<input name="mqttPort" type="number"></label>
+          <label>MQTT user<input name="mqttUser"></label>
+        </div>
+        <label>MQTT password
+          <input type="password" name="mqttPassword" placeholder="Unchanged when blank">
+        </label>
+        <label>Base topic<input name="mqttBaseTopic"></label>
+        <label>Home Assistant discovery
+          <select name="haDiscovery">
+            <option value="0">Disabled</option>
+            <option value="1">Enabled</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">Infrared & Follow Me</div>
+        <div class="grid">
+          <label>IR GPIO<input name="irPin" type="number" min="0" max="15"></label>
+          <label>IR repeats<input name="irRepeats" type="number" min="0" max="10"></label>
+        </div>
+        <label>IR inverted
+          <select name="irInverted">
+            <option value="0">No</option>
+            <option value="1">Yes</option>
+          </select>
+        </label>
+        <label>Command coalesce (ms)<input name="coalesce" type="number"></label>
+        <div class="grid">
+          <label>Follow-Me interval (s)<input name="followInterval" type="number"></label>
+          <label>Temperature timeout (s)<input name="tempTimeout" type="number"></label>
+        </div>
+        <label>Temperature correction °C
+          <input name="tempCorrection" type="number" step=".1">
+        </label>
+        <label>Debug logging
+          <select name="debug">
+            <option value="0">Disabled</option>
+            <option value="1">Enabled</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">Energy</div>
+        <label>Power mode
+          <select name="powerMode">
+            <option value="0">AlwaysOn</option>
+            <option value="1">ModemSleep</option>
+            <option value="2">DeepSleep</option>
+          </select>
+        </label>
+        <div class="warning">
+          During Deep Sleep the device is offline. Retained MQTT set topics and
+          GPIO16-to-RST are required.
+        </div>
+        <div class="grid">
+          <label>Sleep interval (s)<input name="sleepInterval" type="number"></label>
+          <label>Maximum awake (s)<input name="maxAwake" type="number"></label>
+        </div>
+      </div>
+
+      <div class="panel stack">
+        <button type="submit">Validate, save and restart</button>
+        <a class="btn btn-outline" href="/settings">Back to settings</a>
+      </div>
+    </form>
+    <div class="footer">Firmware <span id="firmware">…</span> by SoftWareCrash</div>
+  </div>
+
+  <script>
+    fetch("/api/settings", {cache: "no-store"})
+      .then(response => response.json())
+      .then(data => {
+        firmware.textContent = data.firmware;
+        Object.entries(data).forEach(([name, value]) => {
+          const field = document.querySelector(`[name="${name}"]`);
+          if (field && value !== null) field.value = String(value);
+        });
+      })
+      .catch(() => {
+        document.getElementById("settings-form").innerHTML =
+          '<div class="panel warning">Could not load settings.</div>';
+      });
+  </script>
+</body>
+</html>

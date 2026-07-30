@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+  <title>PortaSplit network setup</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <svg class="logo" viewBox="0 0 64 64" aria-hidden="true">
+        <path fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"
+              d="M10 20c12-10 32-10 44 0M16 30c9-7 23-7 32 0M23 40c5-4 13-4 18 0"/>
+        <circle cx="32" cy="49" r="4" fill="currentColor"/>
+      </svg>
+      <div><h1>Network Setup</h1><h2>PortaSplit2MQTT</h2></div>
+    </div>
+    <p class="subtitle">Choose how this device should operate</p>
+
+    <div class="panel">
+      <div class="panel-title">
+        <span>Available networks</span>
+        <button class="refresh" id="refresh" title="Scan again">↻</button>
+      </div>
+      <div id="networks" class="network-list">
+        <div class="empty"><span class="spinner">↻</span> Scanning…</div>
+      </div>
+      <p class="note">
+        Select a network, enter its password and connect. Credentials stay on this device.
+      </p>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Standalone operation</div>
+      <p class="note">
+        MQTT is disabled. After every reset this setup access point remains available for
+        10 minutes, then Wi-Fi switches off to save energy. No button or maintenance pin
+        is required. PortaSplit control will later use the locally connected temperature sensor.
+      </p>
+      <button class="btn-outline" id="standalone">Use standalone mode</button>
+    </div>
+
+    <div class="panel settings-nav" id="settings-nav">
+      <a class="btn btn-outline" href="/settings">Back to settings</a>
+    </div>
+    <div class="footer">Setup wizard · Firmware <span id="firmware">…</span></div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <script>
+    let busy = false;
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, char => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      })[char]);
+    }
+
+    function signalBars(rssi) {
+      const active = rssi > -55 ? 4 : rssi > -67 ? 3 : rssi > -78 ? 2 : 1;
+      return [1, 2, 3, 4]
+        .map((_, index) => `<i${index < active ? ' class="on"' : ""}></i>`)
+        .join("");
+    }
+
+    function show(message, ok = true, hold = false) {
+      toast.textContent = message;
+      toast.style.borderLeftColor = ok ? "var(--primary)" : "var(--danger)";
+      toast.classList.add("show");
+      if (!hold) setTimeout(() => toast.classList.remove("show"), 3500);
+    }
+
+    async function scan(force = false) {
+      refresh.disabled = true;
+      refresh.classList.add("spinner");
+      try {
+        const response = await fetch(`/api/networks${force ? "?refresh=1" : ""}`, {
+          cache: "no-store"
+        });
+        const data = await response.json();
+        if (data.scanning) {
+          setTimeout(() => scan(false), 1100);
+          return;
+        }
+        if (!data.networks.length) {
+          networks.innerHTML = '<div class="empty">No networks found</div>';
+          return;
+        }
+        networks.innerHTML = data.networks.map((network, index) => `
+          <div class="network" data-index="${index}">
+            <div class="network-head" tabindex="0">
+              <span class="signal">${signalBars(network.rssi)}</span>
+              <div>
+                <div class="ssid">${escapeHtml(network.ssid || "(hidden network)")}</div>
+                <div class="meta">${network.rssi} dBm · channel ${network.channel}</div>
+              </div>
+              <span class="lock">${network.secure ? "●" : "○"}</span>
+            </div>
+            <div class="network-form">
+              <label>Password</label>
+              <input type="password" autocomplete="new-password"
+                     placeholder="${network.secure ? "Enter Wi-Fi password" : "Open network – no password required"}">
+              <button class="connect actions">Connect</button>
+            </div>
+          </div>`).join("");
+
+        document.querySelectorAll(".network-head").forEach(head => {
+          head.onclick = () => {
+            document.querySelectorAll(".network").forEach(item => item.classList.remove("selected"));
+            head.parentElement.classList.add("selected");
+          };
+        });
+        document.querySelectorAll(".connect").forEach((button, index) => {
+          button.onclick = () => connect(
+            data.networks[index],
+            button.parentElement.querySelector("input").value
+          );
+        });
+      } catch {
+        show("Network scan failed", false);
+      } finally {
+        refresh.disabled = false;
+        refresh.classList.remove("spinner");
+      }
+    }
+
+    async function connect(network, password) {
+      if (busy) return;
+      if (network.secure && !password) {
+        show("Enter the Wi-Fi password", false);
+        return;
+      }
+      busy = true;
+      show("Saving network and restarting…", true, true);
+      const body = `ssid=${encodeURIComponent(network.ssid)}&password=${encodeURIComponent(password)}`;
+      try {
+        const response = await fetch("/api/setup", {
+          method: "POST",
+          headers: {"Content-Type": "application/x-www-form-urlencoded"},
+          body
+        });
+        if (!response.ok) throw new Error();
+        show("Saved. Connect your phone back to the home network.", true, true);
+      } catch {
+        busy = false;
+        show("Could not save network", false);
+      }
+    }
+
+    refresh.onclick = () => scan(true);
+    standalone.onclick = async () => {
+      if (busy) return;
+      if (!confirm("Disable MQTT and use standalone operation? The setup AP will return for 10 minutes after every reset.")) return;
+      busy = true;
+      show("Enabling standalone mode…", true, true);
+      try {
+        const response = await fetch("/api/standalone", {method: "POST"});
+        if (!response.ok) throw new Error();
+        show("Standalone mode saved. The AP returns for 10 minutes after restart.", true, true);
+      } catch {
+        busy = false;
+        show("Could not enable standalone mode", false);
+      }
+    };
+
+    if (location.pathname.startsWith("/settings/")) {
+      document.getElementById("settings-nav").style.display = "block";
+    }
+    fetch("/api/status", {cache: "no-store"})
+      .then(response => response.json())
+      .then(data => firmware.textContent = data.firmware)
+      .catch(() => {});
+    scan();
+  </script>
+</body>
+</html>

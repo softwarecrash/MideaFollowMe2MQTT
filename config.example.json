@@ -1,0 +1,20 @@
+{
+  "deviceName": "PortaSplit-Living",
+  "mqttBaseTopic": "portasplit/living",
+  "irPin": 4,
+  "irInverted": false,
+  "irRepeats": 0,
+  "commandCoalesceMs": 250,
+  "followMeIntervalSec": 120,
+  "temperatureTimeoutSec": 600,
+  "temperatureMin": 0,
+  "temperatureMax": 37,
+  "temperatureCorrection": 0.0,
+  "immediateChange": 0.5,
+  "followMeBeep": false,
+  "powerMode": "AlwaysOn",
+  "deepSleepIntervalSec": 120,
+  "maxAwakeSec": 30,
+  "retainedWaitMs": 2000,
+  "fastConnect": true
+}
