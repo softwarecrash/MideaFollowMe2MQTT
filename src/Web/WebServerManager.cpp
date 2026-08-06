@@ -57,29 +57,49 @@ void WebServerManager::begin() {
   _server.on("/api/resend", HTTP_POST, [&]() {
     const bool accepted = _climate.requestResend();
     _server.send(accepted ? 202 : 429, "text/plain",
-                 accepted ? "Current settings sent again."
-                          : "Please wait a moment before sending again.");
+                 accepted ? "Current settings sent by infrared."
+                          : "IR transmitter is busy. Please wait a moment.");
+  });
+  _server.on("/api/ir-test", HTTP_POST, [&]() {
+    const bool sent = _ir.sendLimitedHardwareTest();
+    if (!sent) {
+      _server.send(429, "text/plain",
+                   "IR transmitter is busy. Please wait a moment.");
+      return;
+    }
+    char result[160];
+    snprintf(result, sizeof(result),
+             "IR test #%lu completed: direct %lu us, carrier %lu us / %lu pulses, receiver %lu edges.",
+             static_cast<unsigned long>(_ir.hardwareTestCount()),
+             static_cast<unsigned long>(_ir.lastDirectTestUs()),
+             static_cast<unsigned long>(_ir.lastCarrierTestUs()),
+             static_cast<unsigned long>(_ir.lastCarrierPulses()),
+             static_cast<unsigned long>(_ir.lastReceiverEdges()));
+    _server.send(202, "text/plain", result);
   });
   _server.on("/api/power-toggle", HTTP_POST, [&]() {
     const char *value = _climate.state().power ? "OFF" : "ON";
-    const bool accepted = _climate.handleSetting("power", value);
-    _server.send(accepted ? 202 : 400, "text/plain",
-                 accepted ? "Power command sent." : "Could not send the power command.");
+    const bool accepted = _climate.handleSetting("power", value) &&
+        _climate.requestResend();
+    _server.send(accepted ? 202 : 429, "text/plain",
+                 accepted ? "Power command sent by infrared."
+                          : "IR transmitter is busy. Please wait a moment.");
   });
   _server.on("/api/climate", HTTP_POST, [&]() {
     const bool modeOk = _climate.handleSetting("mode", _server.arg("mode").c_str());
     const bool tempOk = _climate.handleSetting(
         "target_temperature", _server.arg("target").c_str());
-    _server.send(modeOk && tempOk ? 202 : 400, "text/plain",
-                 modeOk && tempOk ? "Mode and temperature applied."
-                                  : "Please check the mode and temperature.");
+    const bool sent = modeOk && tempOk && _climate.requestResend();
+    _server.send(sent ? 202 : 429, "text/plain",
+                 sent ? "Mode and temperature sent by infrared."
+                      : "Check the values or wait until the IR transmitter is ready.");
   });
   _server.on("/api/follow", HTTP_POST, [&]() {
     const float value = _server.arg("temperature").toFloat();
     const bool accepted = _climate.requestFollowMeTest(value);
-    _server.send(accepted ? 202 : 400, "text/plain",
-                 accepted ? "Room temperature sent."
-                          : "Please enter a room temperature between 0 and 37 °C.");
+    _server.send(accepted ? 202 : 429, "text/plain",
+                 accepted ? "Room temperature sent by infrared."
+                          : "Check the temperature or wait until the IR transmitter is ready.");
   });
   _server.on("/settings", HTTP_GET, [&]() {
     sendWebAsset(WebAssets::kSettingsMenu, WebAssets::kSettingsMenuLength, "text/html");
@@ -126,7 +146,7 @@ void WebServerManager::sendWebAsset(const uint8_t *data, size_t length,
                                     const char *contentType) {
   _power.noteBrowserActivity();
   _server.sendHeader(F("Content-Encoding"), F("gzip"));
-  _server.sendHeader(F("Cache-Control"), F("no-cache"));
+  _server.sendHeader(F("Cache-Control"), F("no-store, max-age=0"));
   _server.send_P(200, contentType, reinterpret_cast<PGM_P>(data), length);
 }
 
@@ -204,10 +224,29 @@ void WebServerManager::handleStatus() {
   doc["wifi_rssi_dbm"] = WiFi.isConnected() ? WiFi.RSSI() : 0;
   doc["ip"] = _network.ip().toString();
   doc["mqtt_connected"] = _mqtt.connected();
+  if (_climate.mqttTemperatureValid())
+    doc["mqtt_temperature"] = _climate.mqttTemperature();
+  else
+    doc["mqtt_temperature"] = nullptr;
   doc["wifi_connect_ms"] = _network.connectionDurationMs();
   doc["mqtt_connect_ms"] = _mqtt.connectionDurationMs();
   doc["last_mqtt_contact_ms"] = _mqtt.lastContactMs();
   doc["last_ir_send_ms"] = _ir.lastSendMs();
+  const char *lastIrType = "none";
+  switch (_ir.lastType()) {
+    case IrCommandType::Climate: lastIrType = "climate"; break;
+    case IrCommandType::FollowMe: lastIrType = "follow_me"; break;
+    case IrCommandType::Test: lastIrType = "hardware_test"; break;
+    default: break;
+  }
+  doc["last_ir_type"] = lastIrType;
+  doc["ir_gpio"] = s.irPin;
+  doc["ir_inverted"] = s.irInverted;
+  doc["ir_test_count"] = _ir.hardwareTestCount();
+  doc["ir_test_direct_us"] = _ir.lastDirectTestUs();
+  doc["ir_test_carrier_us"] = _ir.lastCarrierTestUs();
+  doc["ir_test_carrier_pulses"] = _ir.lastCarrierPulses();
+  doc["ir_test_receiver_edges"] = _ir.lastReceiverEdges();
   doc["last_follow_me_ms"] = _ir.lastFollowMeMs();
   doc["room_temperature"] = _climate.state().roomTemperatureValid
       ? _climate.state().roomTemperature : static_cast<float>(NAN);
@@ -296,7 +335,7 @@ void WebServerManager::handleSave() {
     _server.send(400, "text/plain", "Settings rejected. Check serial log for validation errors.");
     return;
   }
-  _server.send(200, "text/plain", "Settings saved. Restarting...");
+  _server.send(200, "application/json", "{\"success\":true,\"restarting\":true}");
   _restartAtMs = millis() + 800;
 }
 

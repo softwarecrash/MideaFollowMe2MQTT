@@ -11,7 +11,9 @@ app_bin = os.path.normpath(os.path.join(build_dir, f"{program_name}.bin"))
 project_dir = env.subst("$PROJECT_DIR")
 environment = env.subst("$PIOENV") or "unknown"
 source_name = env.GetProjectOption("custom_source_name", "MideaFollowMe2MQTT")
-version = env.GetProjectOption("custom_source_version", "0.0.0")
+version_path = os.path.join(project_dir, "VERSION")
+with open(version_path, "r", encoding="ascii") as version_file:
+    version = version_file.read().strip()
 artifact_dir = os.path.normpath(os.path.join(project_dir, ".firmware"))
 
 

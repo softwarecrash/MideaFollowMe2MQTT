@@ -13,6 +13,7 @@ constexpr uint32_t kSettingsMagic = 0x5053324D;  // "PS2M"
 #define MIDEAFOLLOWME_DEFAULT_IR_PIN 4
 #endif
 constexpr uint8_t kDefaultIrPin = MIDEAFOLLOWME_DEFAULT_IR_PIN;
+constexpr uint8_t kIrReceiverPin = 14;
 constexpr uint8_t kLocalTemperaturePin = 0;
 constexpr uint32_t kLocalTemperatureReadMs = 10000;
 constexpr uint32_t kLocalTemperatureRescanMs = 30000;

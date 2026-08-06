@@ -2,6 +2,11 @@
 
 #include "config.h"
 
+namespace {
+volatile uint32_t receiverEdges = 0;
+void IRAM_ATTR countReceiverEdge() { ++receiverEdges; }
+}
+
 MideaIrController::~MideaIrController() { delete _midea; }
 
 void MideaIrController::begin(const SettingsData &settings) {
@@ -9,9 +14,18 @@ void MideaIrController::begin(const SettingsData &settings) {
   delete _midea;
   _midea = new IRMideaAC(settings.irPin, settings.irInverted);
   _midea->begin();
+  prepareOutput();
   _midea->stateReset();
   Serial.printf("[IR] Midea transmitter ready on GPIO%u, inverted=%s\n",
                 settings.irPin, settings.irInverted ? "true" : "false");
+}
+
+void MideaIrController::prepareOutput() {
+  if (!_settings) return;
+  pinMode(_settings->irPin, OUTPUT);
+  // IRsend's idle level must be restored explicitly. This also recovers if
+  // another subsystem or an earlier diagnostic changed the GPIO mode/state.
+  digitalWrite(_settings->irPin, _settings->irInverted ? HIGH : LOW);
 }
 
 bool MideaIrController::canSend(uint32_t now) const {
@@ -54,6 +68,7 @@ void MideaIrController::logState(const char *type, const MideaState &state,
 
 bool MideaIrController::sendClimate(const MideaState &state) {
   if (!canSend(millis())) return false;
+  prepareOutput();
   applyClimate(state);
   // These are one-shot/toggle commands in the library and remain unverified on PortaSplit.
   if ((!_hasLastApplied && state.swingMode == SwingMode::Vertical) ||
@@ -80,6 +95,7 @@ bool MideaIrController::sendClimate(const MideaState &state) {
 
 bool MideaIrController::sendFollowMe(const MideaState &state, float temperature) {
   if (!canSend(millis())) return false;
+  prepareOutput();
   const uint8_t sensor = ClimateValues::roundSensorTemperature(
       ClimateValues::clampTemperature(temperature, 0.0F, 37.0F));
   applyClimate(state);
@@ -90,5 +106,61 @@ bool MideaIrController::sendFollowMe(const MideaState &state, float temperature)
   _lastFollowMeMs = _lastSendMs;
   _lastType = IrCommandType::FollowMe;
   logState("follow_me", state, sensor);
+  return true;
+}
+
+bool MideaIrController::sendLimitedHardwareTest() {
+  if (!canSend(millis())) return false;
+  const uint8_t pin = _settings->irPin;
+  ++_hardwareTestCount;
+  Serial.printf("[IR-TEST] #%lu start: GPIO%u, configured inverted=%s\n",
+                static_cast<unsigned long>(_hardwareTestCount), pin,
+                _settings->irInverted ? "true" : "false");
+
+  // Phase 1 bypasses IRremoteESP8266 completely. Ten-microsecond active-HIGH
+  // pulses at 10 kHz exercise the GPIO and transistor while limiting average
+  // power to 10%. This is intentionally long enough for a camera to integrate.
+  pinMode(pin, OUTPUT);
+  digitalWrite(pin, LOW);
+  const uint32_t directStartedUs = micros();
+  for (uint16_t pulse = 0; pulse < 10000; ++pulse) {
+    digitalWrite(pin, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(pin, LOW);
+    delayMicroseconds(90);
+    if ((pulse % 250U) == 249U) yield();
+  }
+  _lastDirectTestUs = micros() - directStartedUs;
+  Serial.printf("[IR-TEST] direct GPIO phase complete: 10000 pulses in %lu us\n",
+                static_cast<unsigned long>(_lastDirectTestUs));
+  delay(250);
+
+  // Phase 2 follows the exact sender path used by the Midea implementation:
+  // active HIGH, software carrier modulation, 38 kHz and 50% carrier duty.
+  IRsend testOutput(_settings->irPin, false, true);
+  testOutput.begin();
+  testOutput.enableIROut(38, 50);
+  pinMode(Config::kIrReceiverPin, INPUT_PULLUP);
+  receiverEdges = 0;
+  attachInterrupt(digitalPinToInterrupt(Config::kIrReceiverPin),
+                  countReceiverEdge, CHANGE);
+  _lastCarrierPulses = 0;
+  const uint32_t carrierStartedUs = micros();
+  for (uint8_t burst = 0; burst < 25; ++burst) {
+    _lastCarrierPulses += testOutput.mark(20000);
+    testOutput.space(20000);
+  }
+  detachInterrupt(digitalPinToInterrupt(Config::kIrReceiverPin));
+  _lastReceiverEdges = receiverEdges;
+  _lastCarrierTestUs = micros() - carrierStartedUs;
+  digitalWrite(pin, LOW);
+  _lastSendMs = millis();
+  _lastRaw = 0;
+  _lastType = IrCommandType::Test;
+  Serial.printf("[IR-TEST] carrier phase: %lu generated pulses in %lu us, receiver GPIO%u saw %lu edges; GPIO LOW\n",
+                static_cast<unsigned long>(_lastCarrierPulses),
+                static_cast<unsigned long>(_lastCarrierTestUs),
+                Config::kIrReceiverPin,
+                static_cast<unsigned long>(_lastReceiverEdges));
   return true;
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include <IRsend.h>
 #include <ir_Midea.h>
 
 #include "Climate/MideaState.h"
@@ -15,10 +16,16 @@ class MideaIrController {
   bool canSend(uint32_t now) const;
   bool sendClimate(const MideaState &state);
   bool sendFollowMe(const MideaState &state, float temperature);
+  bool sendLimitedHardwareTest();
   uint32_t lastSendMs() const { return _lastSendMs; }
   uint32_t lastFollowMeMs() const { return _lastFollowMeMs; }
   uint64_t lastRaw() const { return _lastRaw; }
   IrCommandType lastType() const { return _lastType; }
+  uint32_t hardwareTestCount() const { return _hardwareTestCount; }
+  uint32_t lastDirectTestUs() const { return _lastDirectTestUs; }
+  uint32_t lastCarrierTestUs() const { return _lastCarrierTestUs; }
+  uint32_t lastCarrierPulses() const { return _lastCarrierPulses; }
+  uint32_t lastReceiverEdges() const { return _lastReceiverEdges; }
 
  private:
   IRMideaAC *_midea = nullptr;
@@ -29,6 +36,12 @@ class MideaIrController {
   IrCommandType _lastType = IrCommandType::None;
   MideaState _lastApplied{};
   bool _hasLastApplied = false;
+  uint32_t _hardwareTestCount = 0;
+  uint32_t _lastDirectTestUs = 0;
+  uint32_t _lastCarrierTestUs = 0;
+  uint32_t _lastCarrierPulses = 0;
+  uint32_t _lastReceiverEdges = 0;
+  void prepareOutput();
   void applyClimate(const MideaState &state);
   void logState(const char *type, const MideaState &state, float sensorTemperature);
 };

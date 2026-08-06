@@ -7,6 +7,8 @@
   --gold: #cbbe86;
   --danger: #c98787;
   --surface: rgba(255, 255, 255, 0.08);
+  --field: #17211d;
+  --field-hover: #202d27;
   --border: rgba(255, 255, 255, 0.16);
   --radius: 14px;
 }
@@ -96,6 +98,43 @@ h2 {
   gap: 10px;
 }
 
+.mqtt-endpoint {
+  grid-template-columns: minmax(0, 1fr) 110px;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.summary-card {
+  padding: 15px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.summary-card small,
+.summary-card strong {
+  display: block;
+}
+
+.summary-card small {
+  min-height: 2.4em;
+  margin-bottom: 7px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.summary-card strong {
+  font-size: 1.12rem;
+}
+
+.ok { color: var(--primary-hover); }
+.bad { color: var(--danger); }
+
 .metric {
   min-width: 0;
   padding: 10px;
@@ -128,7 +167,7 @@ select {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   color: var(--text);
-  background: rgba(255, 255, 255, 0.1);
+  background-color: var(--field);
   font: inherit;
 }
 
@@ -140,6 +179,7 @@ select:focus {
 }
 
 select option {
+  color: var(--text);
   background: var(--bg);
 }
 
@@ -368,6 +408,28 @@ button:disabled {
   text-align: center;
 }
 
+.restart-card {
+  padding: 30px 18px;
+  text-align: center;
+}
+
+.restart-card h2 {
+  margin: 10px 0 6px;
+  color: var(--text);
+  font-size: 1.25rem;
+}
+
+.restart-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.restart-icon {
+  color: var(--primary);
+  font-size: 2rem;
+}
+
 .nav {
   display: flex;
   gap: 8px;
@@ -389,6 +451,10 @@ button:disabled {
 
   .grid {
     grid-template-columns: 1fr;
+  }
+
+  .mqtt-endpoint {
+    grid-template-columns: minmax(0, 1fr) 92px;
   }
 
   .network-head {

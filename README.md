@@ -106,6 +106,11 @@ Board wiring is fixed by the PCB:
 | DS18B20 data / flash-mode input | GPIO0 |
 | Supply | 5 V board input |
 
+The onboard transmitter is active HIGH: use normal (non-inverted) IR polarity
+on GPIO4 and keep carrier modulation enabled. The Midea sender uses a 38 kHz
+carrier with 50% duty cycle. Inverted output holds the transistor and IR LED on
+while idle; it is not the correct setting for this board and can damage the LED.
+
 GPIO14 remains reserved for the later IR receiver/capture feature. GPIO0 serves
 as the DS18B20 1-Wire data pin after startup. It remains the flash-mode input:
 holding it low during reset still selects the ROM bootloader.

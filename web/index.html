@@ -17,6 +17,17 @@
       <div><h1>MideaFollowMe2MQTT</h1><h2>Air conditioner controller</h2></div>
     </div>
 
+    <div class="summary-grid">
+      <div class="summary-card">
+        <small>MQTT connection</small>
+        <strong id="mqtt-summary">Checking...</strong>
+      </div>
+      <div class="summary-card">
+        <small>Temperature received via MQTT</small>
+        <strong id="mqtt-temperature">--</strong>
+      </div>
+    </div>
+
     <div class="panel">
       <div class="panel-title"><span>Device status</span><span id="online">Loading…</span></div>
       <div id="status" class="grid"></div>
@@ -29,8 +40,9 @@
         status back, so the displayed state may occasionally differ.
       </div>
       <div class="stack actions">
-        <button onclick="command('/api/power-toggle')">Switch air conditioner on / off</button>
-        <button class="btn-outline" onclick="command('/api/resend')">Send current settings again</button>
+        <button id="power-button" type="button">Switch air conditioner on / off</button>
+        <button id="resend-button" class="btn-outline" type="button">Send current settings again</button>
+        <button id="ir-test-button" class="btn-outline" type="button">Run two-stage IR hardware test</button>
         <div class="grid">
           <label>Mode
             <select id="mode">
@@ -45,14 +57,13 @@
             <input id="target" type="number" min="17" max="30" value="22">
           </label>
         </div>
-        <button class="btn-outline"
-                onclick="command('/api/climate?mode='+mode.value+'&target='+target.value)">
+        <button id="climate-button" class="btn-outline" type="button">
           Apply mode and temperature
         </button>
         <label>Current room temperature °C
           <input id="temp" type="number" min="0" max="37" value="23">
         </label>
-        <button class="btn-outline" onclick="command('/api/follow?temperature='+temp.value)">
+        <button id="follow-button" class="btn-outline" type="button">
           Send room temperature now
         </button>
       </div>
@@ -66,50 +77,85 @@
 
   <div class="toast" id="toast"></div>
   <script>
-    const labels = {
-      device: "Device", firmware: "Firmware", uptime_s: "Uptime (s)",
-      free_heap: "Free heap", wifi_rssi_dbm: "Wi-Fi RSSI", ip: "IP address",
-      mqtt_connected: "MQTT", last_ir_send_ms: "Last IR (ms)",
-      last_follow_me_ms: "Last Follow-Me (ms)", room_temperature: "Room temperature",
-      temperature_age_s: "Temperature age (s)", temperature_source: "Temperature source",
-      local_sensor_detected: "Local DS18B20", local_temperature: "Local temperature",
-      isense: "Room temperature control",
-      power_mode: "Energy mode", wake_reason: "Wake reason", wake_count: "Wake count",
-      awake_ms: "Awake (ms)", energy_saving_delay_s: "Power saving starts in (s)"
-    };
+    const onlineElement = document.getElementById("online");
+    const mqttSummaryElement = document.getElementById("mqtt-summary");
+    const mqttTemperatureElement = document.getElementById("mqtt-temperature");
+    const firmwareElement = document.getElementById("firmware");
+    const statusGrid = document.getElementById("status");
+    const toastElement = document.getElementById("toast");
+    const modeInput = document.getElementById("mode");
+    const targetInput = document.getElementById("target");
+    const roomTemperatureInput = document.getElementById("temp");
 
     async function refresh() {
       try {
         const response = await fetch("/api/status", {cache: "no-store"});
         const data = await response.json();
-        online.textContent = data.mqtt_connected ? "Online" : "Local";
-        firmware.textContent = data.firmware;
-        status.innerHTML = Object.entries(data)
-          .filter(([, value]) => typeof value !== "object")
-          .map(([key, value]) =>
-            `<div class="metric"><small>${labels[key] || key}</small><span>${value === null ? "n/a" : value}</span></div>`)
+        onlineElement.textContent = data.mqtt_connected ? "Online" : "Local";
+        mqttSummaryElement.textContent = data.mqtt_connected ? "Connected" : "Disconnected";
+        mqttSummaryElement.className = data.mqtt_connected ? "ok" : "bad";
+        mqttTemperatureElement.textContent =
+          data.mqtt_temperature === null ? "No valid value" : `${data.mqtt_temperature.toFixed(1)} \u00b0C`;
+        firmwareElement.textContent = data.firmware;
+        const sourceNames = {mqtt: "MQTT", local_ds18b20: "Local DS18B20", none: "None"};
+        const irNames = {climate: "Climate settings", follow_me: "Room temperature", hardware_test: "Hardware test", none: "None"};
+        const statusItems = [
+          ["IP address", data.ip],
+          ["Temperature in use", data.room_temperature === null ? "--" : `${Number(data.room_temperature).toFixed(1)} \u00b0C`],
+          ["Temperature source", sourceNames[data.temperature_source] || data.temperature_source],
+          ["Last IR command", irNames[data.last_ir_type] || data.last_ir_type]
+        ];
+        statusGrid.innerHTML = statusItems
+          .map(([label, value]) =>
+            `<div class="metric"><small>${label}</small><span>${value ?? "--"}</span></div>`)
           .join("");
       } catch {
-        online.textContent = "Unavailable";
+        onlineElement.textContent = "Unavailable";
+        mqttSummaryElement.textContent = "Unavailable";
+        mqttSummaryElement.className = "bad";
+        mqttTemperatureElement.textContent = "--";
       }
     }
 
     function show(message, ok = true) {
-      toast.textContent = message;
-      toast.style.borderLeftColor = ok ? "var(--primary)" : "var(--danger)";
-      toast.classList.add("show");
-      setTimeout(() => toast.classList.remove("show"), 3200);
+      toastElement.textContent = message;
+      toastElement.style.borderLeftColor = ok ? "var(--primary)" : "var(--danger)";
+      toastElement.classList.add("show");
+      setTimeout(() => toastElement.classList.remove("show"), 3200);
     }
 
-    async function command(url) {
+    async function runCommand(button, url, busyText = "Sending...") {
+      const originalText = button.textContent;
+      button.disabled = true;
+      button.textContent = busyText;
       try {
-        const response = await fetch(url, {method: "POST"});
+        const separator = url.includes("?") ? "&" : "?";
+        const response = await fetch(`${url}${separator}t=${Date.now()}`, {
+          method: "POST",
+          cache: "no-store"
+        });
         show(await response.text(), response.ok);
-        refresh();
+        await refresh();
       } catch {
         show("Request failed", false);
+      } finally {
+        button.disabled = false;
+        button.textContent = originalText;
       }
     }
+
+    document.getElementById("power-button").addEventListener("click", event =>
+      runCommand(event.currentTarget, "/api/power-toggle"));
+    document.getElementById("resend-button").addEventListener("click", event =>
+      runCommand(event.currentTarget, "/api/resend"));
+    document.getElementById("climate-button").addEventListener("click", event =>
+      runCommand(event.currentTarget,
+        `/api/climate?mode=${encodeURIComponent(modeInput.value)}&target=${encodeURIComponent(targetInput.value)}`));
+    document.getElementById("follow-button").addEventListener("click", event =>
+      runCommand(event.currentTarget,
+        `/api/follow?temperature=${encodeURIComponent(roomTemperatureInput.value)}`));
+    document.getElementById("ir-test-button").addEventListener("click", event =>
+      runCommand(event.currentTarget, "/api/ir-test", "IR hardware test running..."));
 
     setInterval(refresh, 3000);
     refresh();

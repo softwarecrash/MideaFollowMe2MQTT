@@ -16,7 +16,7 @@
       <h1>Firmware Update</h1>
     </div>
 
-    <div class="panel">
+    <div class="panel" id="updatePanel">
       <div class="panel-title">Install a firmware update</div>
       <p class="note">
         Select a MideaFollowMe2MQTT update file ending in <strong>.ota.gz</strong>.
@@ -30,7 +30,7 @@
       </div>
     </div>
 
-    <div class="panel"><a class="btn btn-outline" href="/">Back</a></div>
+    <div class="panel" id="backPanel"><a class="btn btn-outline" href="/">Back</a></div>
     <div class="footer">Firmware <span id="firmware">…</span> by SoftWareCrash</div>
   </div>
 
@@ -74,7 +74,14 @@
         if (request.status === 200) {
           bar.style.width = "100%";
           percent.textContent = "100%";
-          show("Update complete. Device is restarting…", true, true);
+          updatePanel.innerHTML = `
+            <div class="restart-card">
+              <div class="restart-icon spinner">&#10227;</div>
+              <h2>Update installed</h2>
+              <p>The device is restarting. The dashboard opens automatically.</p>
+            </div>`;
+          backPanel.style.display = "none";
+          setTimeout(() => location.replace("/"), 5000);
         } else {
           choose.style.display = "block";
           progress.style.display = "none";

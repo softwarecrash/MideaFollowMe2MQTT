@@ -19,11 +19,11 @@
     <form id="settings-form" method="post" action="/settings">
       <div class="panel">
         <div class="panel-title">MQTT</div>
-        <label>MQTT host<input name="mqttHost"></label>
-        <div class="grid">
+        <div class="grid mqtt-endpoint">
+          <label>MQTT host / IP<input name="mqttHost"></label>
           <label>MQTT port<input name="mqttPort" type="number"></label>
-          <label>MQTT user<input name="mqttUser"></label>
         </div>
+        <label>MQTT username<input name="mqttUser"></label>
         <label>MQTT password
           <input type="password" name="mqttPassword" placeholder="Unchanged when blank">
         </label>
@@ -42,12 +42,16 @@
           <label>IR GPIO<input name="irPin" type="number" min="1" max="15"></label>
           <label>IR repeats<input name="irRepeats" type="number" min="0" max="10"></label>
         </div>
-        <label>IR inverted
+        <label>IR output polarity
           <select name="irInverted">
-            <option value="0">No</option>
-            <option value="1">Yes</option>
+            <option value="0">Normal (ESP_IR_TR_V1.1)</option>
+            <option value="1">Inverted (custom hardware only)</option>
           </select>
         </label>
+        <p class="note">
+          ESP_IR_TR_V1.1 uses normal polarity on GPIO4. Inverted polarity can
+          leave its IR LED continuously powered and must not be used on this board.
+        </p>
         <label>Delay before sending changes (ms)<input name="coalesce" type="number"></label>
         <div class="grid">
           <label>Room temperature update interval (s)<input name="followInterval" type="number"></label>
@@ -105,6 +109,7 @@
   </div>
 
   <script>
+    const form = document.getElementById("settings-form");
     fetch("/api/settings", {cache: "no-store"})
       .then(response => response.json())
       .then(data => {
@@ -115,9 +120,34 @@
         });
       })
       .catch(() => {
-        document.getElementById("settings-form").innerHTML =
+        form.innerHTML =
           '<div class="panel warning">Could not load settings.</div>';
       });
+
+    form.addEventListener("submit", async event => {
+      event.preventDefault();
+      const button = form.querySelector('button[type="submit"]');
+      button.disabled = true;
+      button.textContent = "Saving settings...";
+      try {
+        const response = await fetch(form.action, {
+          method: "POST",
+          body: new FormData(form)
+        });
+        if (!response.ok) throw new Error(await response.text());
+        form.innerHTML = `
+          <div class="panel restart-card">
+            <div class="restart-icon spinner">&#10227;</div>
+            <h2>Settings saved</h2>
+            <p>The device is restarting. The dashboard opens automatically.</p>
+          </div>`;
+        setTimeout(() => location.replace("/"), 4500);
+      } catch (error) {
+        button.disabled = false;
+        button.textContent = "Save changes and restart";
+        alert(error.message || "Could not save settings.");
+      }
+    });
     setInterval(() => fetch("/api/activity", {cache: "no-store"}).catch(() => {}), 5000);
   </script>
 </body>

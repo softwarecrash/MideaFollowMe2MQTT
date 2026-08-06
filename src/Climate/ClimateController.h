@@ -30,6 +30,7 @@ class ClimateController {
   bool localTemperatureValid() const { return _localTemperatureValid; }
   float localTemperature() const { return _localTemperature; }
   bool mqttTemperatureValid() const { return _mqttTemperatureValid; }
+  float mqttTemperature() const { return _mqttTemperature; }
   bool hasPendingWork() const { return _climatePending || _followMePending; }
   void toJson(JsonObject target) const;
 

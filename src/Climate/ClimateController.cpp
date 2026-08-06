@@ -156,13 +156,19 @@ bool ClimateController::requestResend() {
   const uint32_t now = millis();
   if (!ClimateValues::elapsed(now, _lastCommandMs, Config::kCommandRateLimitMs)) return false;
   _lastCommandMs = now;
-  _climatePending = true;
-  _climateDueMs = now;
+  if (!_ir.sendClimate(_state)) return false;
+  _climatePending = false;
+  if (_state.iSense && _state.roomTemperatureValid) _followMePending = true;
+  ++_revision;
   return true;
 }
 
 bool ClimateController::requestFollowMeTest(float temperature) {
-  return setMqttTemperature(temperature);
+  if (!setMqttTemperature(temperature)) return false;
+  if (!_ir.sendFollowMe(_state, _mqttTemperature)) return false;
+  _followMePending = false;
+  ++_revision;
+  return true;
 }
 
 void ClimateController::prepareWakeWork(bool climateStateChanged) {
